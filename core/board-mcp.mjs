@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { resolveConfigPath, resolveSessionsDir } from '../magpie_plugin/lib/backend.mjs';
 import { GEMPT_VERSION } from './config.mjs';
-import { resolvePath } from './state.mjs';
+import { isPlainObject, parseToolArguments, resolvePath } from './state.mjs';
 import { getWorker, getSwarmOverview, postBoardMessage, updateWorker } from './swarm-bus.mjs';
 import { TOOLS } from './tool-schemas.mjs';
 import { publishNarratorView } from './swarm-narrator.mjs';
@@ -63,7 +63,6 @@ export const BOARD_TOOLS = [
       .map(([key, schema]) => [key, key === 'action' ? { type: 'string', enum: ['status', 'add', 'kill', 'model', 'models', 'channel'] } : schema])), ['action']),
 ];
 
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const textResult = (data, extras) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], ...extras });
 const errorResponse = (id, code, message, data) => ({ jsonrpc: '2.0', id, error: { code, message, data } });
 
@@ -148,8 +147,7 @@ async function dispatch(request, env, overrides) {
         return response({ tools: BOARD_TOOLS });
       case 'tools/call': {
         const name = String(params?.name || '');
-        const args = params?.arguments ?? {};
-        if (!isObject(args)) throw new Error('Tool arguments must be a JSON object.');
+        const args = parseToolArguments(params?.arguments);
         try {
           return response(await handleBoardMcpTool(name, args, env, overrides));
         } catch (error) {
@@ -176,7 +174,7 @@ export async function serveBoardStdio(input = process.stdin, output = process.st
       write(errorResponse(null, -32700, `Parse error: ${error.message}`));
       continue;
     }
-    if (!isObject(request)) continue;
+    if (!isPlainObject(request)) continue;
     const task = dispatch(request, env, overrides).then(write);
     pending.add(task);
     task.finally(() => pending.delete(task));

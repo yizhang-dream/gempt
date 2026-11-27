@@ -26,6 +26,28 @@ export function withinPath(path, root) {
   return !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`);
 }
 
+export function isPlainObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+export function parseToolArguments(raw) {
+  if (raw == null) return {};
+  let args = raw;
+  if (typeof raw === 'string') {
+    const text = raw.trim();
+    if (!text) return {};
+    try {
+      args = JSON.parse(text);
+    } catch {
+      throw new Error('Tool arguments must be a JSON object.');
+    }
+  }
+  if (!isPlainObject(args)) throw new Error('Tool arguments must be a JSON object.');
+  return args;
+}
+
 export const SESSION_ID_MAX_LEN = 128;
 export const DEFAULT_LOCK_STALE_MS = 300_000;
 const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;

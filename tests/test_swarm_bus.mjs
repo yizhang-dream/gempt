@@ -652,9 +652,11 @@ test('board-mcp stdio server exposes board_post, board_read, board_ask, and boar
   assert.equal(postData.ok, true);
   assert.equal(postData.message.from_agent, 'helper');
 
+  const invalid = await req('tools/call', { name: 'board_ask', arguments: '{' });
+  assert.deepEqual(invalid.error, { code: -32603, message: 'Tool arguments must be a JSON object.' });
   const asked = await req('tools/call', {
     name: 'board_ask',
-    arguments: { question: 'Approve layout?', reason: 'visual_check', media_paths: ['/tmp/ui.png'] },
+    arguments: JSON.stringify({ question: 'Approve layout?', reason: 'visual_check', media_paths: ['/tmp/ui.png'] }),
   });
   const askData = JSON.parse(asked.result.content[0].text);
   assert.equal(askData.message.kind, 'question');

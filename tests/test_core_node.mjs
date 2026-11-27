@@ -28,7 +28,7 @@ import { buildWaitCommand, dispatchRun, interruptRun, isRecentUnconfirmedRun, li
   reconcileRunState, replyToolCall, runDirectory, runWithinRoot, saveRun, steerRun, waitForRun, waitForRuns } from '../core/runs.mjs';
 import { waitForBoard } from '../core/wait.mjs';
 import { handleBoardMcpTool } from '../core/board-mcp.mjs';
-import { DEFAULT_LOCK_STALE_MS, isValidSessionId, lockStaleMsForBudget, validateSessionId, withLock } from '../core/state.mjs';
+import { DEFAULT_LOCK_STALE_MS, isValidSessionId, lockStaleMsForBudget, parseToolArguments, validateSessionId, withLock } from '../core/state.mjs';
 import { linkTarget, listArguments, streamRenderKey, timelineMessages } from '../mcp_app/live-state.js';
 import { assertShareWorktree, ensureShareWorktree, pruneShareWorktrees,
   removeShareWorktree, resolveExternalWorktreeSourceCwd, workspaceFileRoots, worktreesRoot } from '../core/worktrees.mjs';
@@ -1850,6 +1850,18 @@ test('Live journal filters other turns, bounds events, and pages stable Unicode 
   assert.equal((await call({})).full_text, 'rotated');
 });
 
+test('parseToolArguments accepts objects and JSON object strings and rejects malformed or non-object values', () => {
+  const args = { action: 'read', seqs: [1, 2] };
+  assert.equal(parseToolArguments(args), args);
+  assert.deepEqual(parseToolArguments(` ${JSON.stringify(args)} `), args);
+  for (const raw of [undefined, null, '', ' \t\n']) {
+    assert.deepEqual(parseToolArguments(raw), {});
+  }
+  for (const raw of ['{', '[]', 'null', 'false', '0', '"text"', [], false, 0, new Date()]) {
+    assert.throws(() => parseToolArguments(raw), { name: 'Error', message: 'Tool arguments must be a JSON object.' });
+  }
+});
+
 test('standalone NDJSON MCP serves the inline launcher and preserves cross-directory tool receipts and ownership', async (t) => {
   const f = fixture(t);
   await appFixture(t, f);
@@ -1901,10 +1913,12 @@ test('standalone NDJSON MCP serves the inline launcher and preserves cross-direc
   assert.equal(status.active.length, 1);
   assert.equal(status.active[0].id, 'd'.repeat(32));
   assert.equal(result.structuredContent, undefined);
+  const invalid = await request('tools/call', { name: 'gpt_ctl', arguments: '{' });
+  assert.deepEqual(invalid.error, { code: -32603, message: 'Tool arguments must be a JSON object.' });
   const oversized = 'e'.repeat(32);
   state(f, oversized, { state: 'failed', host_conversation_id: 'host', title: '🚦'.repeat(40),
     error: '🚧'.repeat(500) });
-  const detail = (await request('tools/call', { name: 'gpt_ctl', arguments: { run_id: oversized } })).result;
+  const detail = (await request('tools/call', { name: 'gpt_ctl', arguments: JSON.stringify({ run_id: oversized }) })).result;
   assert.equal(JSON.parse(detail.content[0].text).err, '🚧'.repeat(500));
   assert.equal(JSON.parse(detail.content[0].text).id, oversized);
   const asked = await request('tools/call', { name: 'gpt_ask', arguments: { goal: 'Summarize the fixture.', cwd: cross } });
