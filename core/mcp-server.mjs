@@ -8,7 +8,7 @@ import { readHostContext } from './host-context.mjs';
 import { LAUNCHER_META, LAUNCHER_PATH, LAUNCHER_TYPE, LAUNCHER_URI, SIDECAR_URI } from './mcp-app.mjs';
 import { scopedRunRecords } from './live-service.mjs';
 import { ACTIVE_STATES, buildWaitCommand, dispatchRun, interruptRun, pendingToolCalls, readRun, refreshRun, replyToolCall, runWithinRoot, steerRun, validateExecTimeoutSec } from './runs.mjs';
-import { lockStaleMsForBudget, resolvePath, validateSessionId, withLock } from './state.mjs';
+import { isPlainObject, lockStaleMsForBudget, parseToolArguments, resolvePath, validateSessionId, withLock } from './state.mjs';
 import { handleBoardAction, handleSwarmAction, routeBoardDeliveries } from './swarm-engine.mjs';
 import { getSwarmOverview } from './swarm-bus.mjs';
 import { startSwarmMonitor } from './swarm-monitor.mjs';
@@ -16,7 +16,6 @@ import { TOOLS } from './tool-schemas.mjs';
 import { normalizeTitle } from '../magpie_plugin/lib/activity.mjs';
 export { TOOLS };
 
-const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const textResult = (data, extras) => ({ content: [{ type: 'text', text: JSON.stringify(data) }], ...extras });
 const launcherSummary = (fields) => ({ ...fields, sidecar_uri: SIDECAR_URI, created_at_ms: Date.now() });
 function runStatus(record, options) {
@@ -169,8 +168,7 @@ async function dispatch(request, env) {
           text: await readFile(new URL(LAUNCHER_PATH, import.meta.url), 'utf8') }] });
       case 'tools/call': {
         const name = String(params?.name || '');
-        const args = params?.arguments ?? {};
-        if (!object(args)) throw new Error('Tool arguments must be a JSON object.');
+        const args = parseToolArguments(params?.arguments);
         try {
           return response(await handleTool(name, args, env));
         } catch (error) {
@@ -201,7 +199,7 @@ export async function serveStdio(input = process.stdin, output = process.stdout,
       write(errorResponse(null, -32700, `Parse error: ${error.message}`));
       continue;
     }
-    if (!object(request)) continue;
+    if (!isPlainObject(request)) continue;
     const task = dispatch(request, env).then(write);
     pending.add(task);
     task.finally(() => pending.delete(task));
